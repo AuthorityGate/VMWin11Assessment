@@ -1,65 +1,256 @@
+#requires -Version 5.1
 <#
+========================================================================================================
+    Title:          VMware Windows 11 Batch Assessment Tool
+    Filename:       VMwareWin11BatchAssessment.ps1
+    Description:    Enterprise-grade batch assessment tool for Windows 11 upgrade readiness evaluation
+                    across VMware virtual machine infrastructure with integrated Microsoft PC Health 
+                    Check validation and comprehensive CSV reporting capabilities
+    Author:         Kevin Komlosy
+    Company:        AuthorityGate Inc.
+    Website:        https://www.authoritygate.com
+    Email:          kevin.komlosy@authoritygate.com
+    Date:           September 15, 2025
+    Version:        1.2.3
+    
+    License:        MIT License (GitHub Freeware)
+                    
+                    Copyright (c) 2025 AuthorityGate Inc.
+                    
+                    Permission is hereby granted, free of charge, to any person obtaining a copy
+                    of this software and associated documentation files (the "Software"), to deal
+                    in the Software without restriction, including without limitation the rights
+                    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+                    copies of the Software, and to permit persons to whom the Software is
+                    furnished to do so, subject to the following conditions:
+                    
+                    The above copyright notice and this permission notice shall be included in all
+                    copies or substantial portions of the Software.
+                    
+                    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+                    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+                    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+                    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+                    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+                    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+                    SOFTWARE.
+========================================================================================================
+
 .SYNOPSIS
-    Standalone Windows 11 Compatibility Assessment Tool for VMware vCenter
-    
+    Performs automated batch assessment of Windows 11 upgrade readiness across VMware virtual machine 
+    infrastructure with Microsoft PC Health Check integration and detailed CSV reporting.
+
 .DESCRIPTION
-    Performs Windows 11 compatibility assessment on VMs without making any changes.
-    Can assess single VMs or multiple VMs from CSV file.
-    Generates detailed HTML and CSV reports.
+    This streamlined assessment tool provides enterprise IT administrators with a comprehensive 
+    Windows 11 readiness evaluation solution for VMware environments. It automates the discovery 
+    and assessment of Windows 10 virtual machines, executes Microsoft's official PC Health Check 
+    tool within each guest OS, and generates detailed CSV reports for upgrade planning.
     
+    Key Features in Version 1.2.3:
+    - Automatic discovery of Windows 10 VMs in vCenter inventory
+    - Batch processing with progress tracking
+    - Microsoft PC Health Check automatic deployment and execution
+    - Comprehensive hardware compatibility validation
+    - Guest OS detailed assessment when credentials provided
+    - CSV export with all assessment metrics
+    - Non-interactive operation for automation scenarios
+    - Minimal dependencies and lightweight execution
+    
+    Assessment Categories:
+    
+    VMware Infrastructure Level:
+    - Virtual hardware version compatibility (v14+ for vTPM)
+    - CPU core allocation (2+ cores required)
+    - Memory allocation (4GB+ required)
+    - Virtual disk capacity (64GB+ required)
+    - vTPM 2.0 presence and configuration
+    - EFI firmware status
+    - VMware Tools running state
+    
+    Guest Operating System Level:
+    - Windows 10 build number verification
+    - Available disk space on system drive
+    - Recovery partition size and configuration
+    - Windows activation and licensing status
+    - Microsoft PC Health Check validation
+    - System file integrity
+    
+    PC Health Check Integration:
+    - Automatic download of latest PC Health Check tool
+    - Silent installation on target VMs
+    - Execution with result parsing
+    - Registry-based result extraction
+    - Detailed failure reason reporting
+    
+    Report Generation:
+    - Timestamped CSV files for tracking
+    - Comprehensive assessment metrics per VM
+    - Actionable recommendations for remediation
+    - Overall readiness categorization
+    - PC Health Check pass/fail details
+
+.PARAMETER vCenterServer
+    Specifies the vCenter server FQDN or IP address to connect to. This parameter is mandatory.
+    Examples: "vcenter.domain.com", "192.168.1.100", "vcenter01.contoso.local"
+
+.PARAMETER vCenterUser
+    Specifies the username for vCenter authentication. Can be in domain\username or username@domain 
+    format. This parameter is mandatory.
+    Examples: "domain\admin", "administrator@vsphere.local", "svc_vmware@contoso.com"
+
+.PARAMETER OutputPath
+    Specifies the directory path where the CSV report will be saved. If not specified, defaults to 
+    the current working directory. The directory must exist and be writable.
+    Default: Current directory (Get-Location)
+
+.PARAMETER VMList
+    Optional array of specific VM names to assess. If not provided or empty, the tool will 
+    automatically discover and assess all Windows 10 VMs in the vCenter inventory.
+    Examples: @("VM1", "VM2"), @("Win10-Finance", "Win10-HR", "Win10-IT")
+
+.PARAMETER GuestUser
+    Specifies the username for guest OS authentication. This should be a local or domain administrator
+    account that has access to all target VMs. Defaults to "Administrator" if not specified.
+    Examples: "Administrator", "domain\admin", "localadmin"
+
 .EXAMPLE
-    .\Assess-Win11Compatibility.ps1 -MachineName "VM001" -vCenterServer "vcenter.domain.com" -vCenterAdminUser "administrator@vsphere.local" -WindowsDomainUser "DOMAIN\admin"
+    .\VMwareWin11BatchAssessment.ps1 -vCenterServer "vcenter.domain.com" -vCenterUser "administrator@vsphere.local"
     
+    Connects to vCenter, discovers all Windows 10 VMs, and performs assessment with default settings.
+
 .EXAMPLE
-    .\Assess-Win11Compatibility.ps1 -CSV "VMs.csv" -vCenterServer "vcenter.domain.com" -vCenterAdminUser "administrator@vsphere.local" -WindowsDomainUser "DOMAIN\admin"
+    .\VMwareWin11BatchAssessment.ps1 -vCenterServer "vcenter.domain.com" -vCenterUser "domain\admin" -VMList @("Win10-01", "Win10-02", "Win10-03") -OutputPath "C:\Reports"
     
+    Assesses specific VMs and saves the report to C:\Reports directory.
+
+.EXAMPLE
+    .\VMwareWin11BatchAssessment.ps1 -vCenterServer "192.168.1.100" -vCenterUser "admin@vsphere.local" -GuestUser "CONTOSO\svc_admin"
+    
+    Uses domain service account for guest OS access across all discovered Windows 10 VMs.
+
+.EXAMPLE
+    # Automated scheduled task example
+    $params = @{
+        vCenterServer = "vcenter.contoso.com"
+        vCenterUser = "svc_vmware@contoso.com"
+        OutputPath = "\\fileserver\reports\win11"
+        GuestUser = "CONTOSO\svc_assessment"
+    }
+    .\VMwareWin11BatchAssessment.ps1 @params
+    
+    Example for use in scheduled tasks or automation scripts with splatting.
+
 .NOTES
-    Version: 1.0.0
-    This script ONLY performs assessment - no changes are made to VMs
+    Prerequisites:
+    - PowerShell 5.1 or higher
+    - VMware PowerCLI modules (automatically installed if missing)
+    - vCenter Server 6.5 or higher
+    - VMware Tools installed and running on target VMs
+    - Administrative credentials for vCenter
+    - Administrative credentials for guest OS (for detailed assessment)
+    - Network connectivity to vCenter server
+    - Internet connectivity on target VMs (for PC Health Check download)
+    
+    VMware PowerCLI Modules Required:
+    - VMware.VimAutomation.Core
+    - VMware.VimAutomation.Common
+    
+    Supported Guest Operating Systems:
+    - Windows 10 version 1909 and later
+    - Windows 10 Enterprise, Pro, Education editions
+    - Windows 10 LTSC/LTSB editions (with limitations)
+    
+    Assessment Output Fields:
+    - Timestamp: Assessment date and time
+    - VMName: Virtual machine name
+    - PowerState: Current power state
+    - GuestOS: Guest operating system
+    - OverallReadiness: Consolidated readiness status
+    - PCHealthCheckStatus: Microsoft tool result
+    - PCHealthCheckDetails: Specific failure reasons
+    - CPU/Memory/Disk status: Hardware compliance
+    - vTPM/Firmware status: Security requirements
+    - RecoveryPartition: Size and status
+    - LicenseStatus: Windows activation state
+    - RequiredActions: Remediation steps needed
+    
+    Performance Considerations:
+    - Assessment time: ~1-2 minutes per VM
+    - Parallel processing: Not implemented (sequential for stability)
+    - Network bandwidth: Minimal (~10MB per VM for PC Health Check)
+    - Guest OS impact: Low (brief CPU spike during assessment)
+    
+    Security Considerations:
+    - Credentials are not stored or logged
+    - PC Health Check runs with provided admin rights
+    - No permanent changes made to VMs
+    - Assessment is read-only except for PC Health Check installation
+    
+    Limitations:
+    - Requires powered-on VMs for full assessment
+    - PC Health Check requires internet access or local repository
+    - Some metrics unavailable without guest credentials
+    - LTSC editions may show false negatives in PC Health Check
+    
+    Exit Codes:
+    - 0: Success - Assessment completed
+    - 1: Error - Connection or assessment failure
+    
+    CSV Report Format:
+    The generated CSV includes all assessment metrics in a flat structure suitable for:
+    - Import into Excel or database systems
+    - Power BI or Tableau visualization
+    - SCCM or other deployment planning tools
+    - Executive reporting dashboards
+
+.LINK
+    https://www.authoritygate.com
+
+.LINK
+    https://github.com/authoritygate
+
+.LINK
+    https://aka.ms/GetPCHealthCheckApp
+
+.LINK
+    https://docs.microsoft.com/windows/whats-new/windows-11-requirements
+
+.LINK
+    https://docs.vmware.com/en/VMware-vSphere/index.html
+
+.FUNCTIONALITY
+    Batch Assessment, Windows 11 Readiness, VMware vSphere, Guest OS Analysis, PC Health Check,
+    CSV Reporting, Virtual Machine Discovery, Compliance Validation, Upgrade Planning,
+    Infrastructure Assessment, Automated Evaluation, Enterprise Reporting
 #>
 
-#requires -Version 5.1
-
 param(
-    [Parameter(Mandatory=$false)]
-    [string]$MachineName,
-    
-    [Parameter(Mandatory=$false)]
-    [string]$CSV,
-    
     [Parameter(Mandatory=$true)]
     [string]$vCenterServer,
     
     [Parameter(Mandatory=$true)]
-    [string]$vCenterAdminUser,
-    
-    [Parameter(Mandatory=$true)]
-    [string]$WindowsDomainUser,
+    [string]$vCenterUser,
     
     [Parameter(Mandatory=$false)]
-    [string]$OutputCSV = "Win11_Compatibility_$(Get-Date -Format 'yyyyMMdd_HHmmss').csv",
+    [string]$OutputPath = (Get-Location).Path,
     
     [Parameter(Mandatory=$false)]
-    [string]$OutputHTML = "Win11_Compatibility_Report_$(Get-Date -Format 'yyyyMMdd_HHmmss').html",
+    [string[]]$VMList = @(),
     
     [Parameter(Mandatory=$false)]
-    [switch]$SkipHTMLReport,
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$ShowGridView
+    [string]$GuestUser = "Administrator"
 )
 
-# Import required VMware modules
-try {
+# Initialize VMware modules
+function Initialize-VMwareModules {
     $requiredModules = @(
         'VMware.VimAutomation.Core',
-        'VMware.VimAutomation.Common',
-        'VMware.VimAutomation.Sdk'
+        'VMware.VimAutomation.Common'
     )
     
     foreach ($module in $requiredModules) {
         if (-not (Get-Module -ListAvailable -Name $module)) {
-            Write-Host "Installing $module from PowerShell Gallery..."
+            Write-Host "Installing $module..." -ForegroundColor Yellow
             Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber -Confirm:$false
         }
         Import-Module $module -ErrorAction Stop
@@ -67,379 +258,578 @@ try {
     
     Set-PowerCLIConfiguration -InvalidCertificateAction Ignore -Confirm:$false -Scope User | Out-Null
     Set-PowerCLIConfiguration -ParticipateInCEIP $false -Confirm:$false -Scope User | Out-Null
-    
-    Write-Host "VMware PowerCLI modules loaded successfully." -ForegroundColor Green
-}
-catch {
-    Write-Error "Failed to load VMware PowerCLI modules: $_"
-    throw
 }
 
-# Import the compatibility module
-. "$PSScriptRoot\VMware-Win11-CompatibilityModule.ps1"
-
-function Show-Banner {
-    $banner = @"
-
-========================================================================
-    Windows 11 VMware Compatibility Assessment Tool
-    Version 1.0.0
+# Test VMware Tools status
+function Test-VMwareToolsRunning {
+    param([VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM)
     
-    Based on Win10-build-checker by Kevin Komlosy (AuthorityGate Inc.)
+    $VM = Get-VM -Name $VM.Name | Select-Object -First 1 -ErrorAction SilentlyContinue
+    if (-not $VM) { return $false }
     
-    This tool performs READ-ONLY assessment - No changes will be made
-========================================================================
-
-"@
-    Write-Host $banner -ForegroundColor Cyan
+    return ($VM.ExtensionData.Guest.ToolsRunningStatus -eq 'guestToolsRunning' -or 
+            $VM.Guest.State -eq 'Running' -or 
+            $VM.ExtensionData.Guest.ToolsStatus -eq 'toolsOk')
 }
 
-function Connect-vCenter {
+# Check vTPM status
+function Check-vTPMStatus {
+    param([VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM)
+    
+    $vmView = $VM | Get-View
+    
+    # Check hardware version
+    $hwVersion = 0
+    if ($VM.Version -and $VM.Version -ne "Unknown") {
+        $versionString = $VM.Version -replace 'v', '' -replace 'vmx-', ''
+        if ($versionString -match '^\d+$') {
+            $hwVersion = [int]$versionString
+        }
+    }
+    
+    # Check firmware
+    $firmware = $vmView.Config.Firmware
+    if (-not $firmware) { $firmware = "bios" }
+    
+    # Check for vTPM
+    $vTPM = $vmView.Config.Hardware.Device | Where-Object { $_.GetType().Name -eq 'VirtualTPM' }
+    
+    return @{
+        HardwareVersion = $hwVersion
+        Firmware = $firmware
+        HasTPM = [bool]$vTPM
+    }
+}
+
+# Run PC Health Check on VM
+function Invoke-PCHealthCheck {
     param(
-        [string]$Server,
-        [PSCredential]$Credential
+        [VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM,
+        [PSCredential]$GuestCredential
     )
     
-    try {
-        Write-Host "Connecting to vCenter Server: $Server..." -ForegroundColor Yellow
-        Connect-VIServer -Server $Server -Credential $Credential -Force:$true -ErrorAction Stop | Out-Null
-        Write-Host "Successfully connected to vCenter." -ForegroundColor Green
-        return $true
-    }
-    catch {
-        Write-Error "Failed to connect to vCenter: $_"
-        return $false
-    }
-}
-
-function Test-VMWindows10OS {
-    param(
-        [VMware.VimAutomation.ViCore.Types.V1.Inventory.VirtualMachine]$VM
-    )
-    
-    $guestOS = $VM.Guest.OSFullName
-    
-    if ($guestOS -like "*Windows 10*") {
-        return $true
-    }
-    
-    return $false
-}
-
-function Assess-VM {
-    param(
-        [string]$VMName,
-        [PSCredential]$WindowsCredential
-    )
-    
-    Write-Host ""
-    Write-Host "=" * 60
-    Write-Host "Assessing VM: $VMName"
-    Write-Host "=" * 60
-    
-    try {
-        # Get VM object
-        $vm = Get-VM -Name $VMName -ErrorAction Stop
-        
-        # Check if VM is powered on and VMware Tools is running
-        if ($vm.PowerState -ne 'PoweredOn') {
-            Write-Warning "VM is not powered on. Cannot perform assessment."
-            return @{
-                ComputerName = $VMName
-                Status = "VM Not Powered On"
-                Win11Compatible = "Cannot Assess"
-                CompatibilityIssues = "VM must be powered on for assessment"
-                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            }
-        }
-        
-        if ($vm.Guest.State -ne 'Running') {
-            Write-Warning "VMware Tools is not running. Cannot perform assessment."
-            return @{
-                ComputerName = $VMName
-                Status = "VMware Tools Not Running"
-                Win11Compatible = "Cannot Assess"
-                CompatibilityIssues = "VMware Tools must be running for assessment"
-                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            }
-        }
-        
-        # Check if this is Windows 10
-        if (-not (Test-VMWindows10OS -VM $vm)) {
-            Write-Host "VM is not running Windows 10. Guest OS: $($vm.Guest.OSFullName)" -ForegroundColor Yellow
-            return @{
-                ComputerName = $VMName
-                Status = "Not Windows 10"
-                GuestOS = $vm.Guest.OSFullName
-                Win11Compatible = "N/A - Not Windows 10"
-                CompatibilityIssues = "System is not Windows 10"
-                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            }
-        }
-        
-        Write-Host "Windows 10 detected. Running compatibility assessment..." -ForegroundColor Green
-        
-        # Run the comprehensive compatibility check
-        $result = Test-VMWindows11Compatibility -VM $vm -MachineName $VMName -WindowsDomainCredential $WindowsCredential
-        
-        if ($result) {
-            # Display results
-            Write-Host ""
-            Write-Host "Assessment Results for $VMName:" -ForegroundColor Cyan
-            Write-Host "-" * 40
-            Write-Host "OS: $($result.ProductName) $($result.DisplayVersion)"
-            Write-Host "Build: $($result.BuildNumber).$($result.UpdateBuildRevision)"
-            Write-Host "Architecture: $($result.Architecture)"
-            Write-Host ""
-            
-            # Compatibility status
-            $compatColor = switch ($result.Win11Compatible) {
-                "Yes" { "Green" }
-                "No" { "Red" }
-                "VM - Needs Configuration" { "Yellow" }
-                default { "Gray" }
-            }
-            Write-Host "Windows 11 Compatibility: $($result.Win11Compatible)" -ForegroundColor $compatColor
-            
-            # Show detailed checks
-            Write-Host ""
-            Write-Host "Compatibility Checks:" -ForegroundColor Cyan
-            Write-Host "  License: $(if ($result.IsLicensed) { '[PASS]' } else { '[FAIL]' }) $($result.LicenseStatusText)"
-            Write-Host "  TPM 2.0: $(if ($result.TPMVersion -match '2\.0') { '[PASS]' } else { '[FAIL]' }) Version $($result.TPMVersion)"
-            Write-Host "  UEFI: $(if ($result.UEFIMode -eq 'Yes') { '[PASS]' } else { '[FAIL]' })"
-            Write-Host "  Secure Boot: $(if ($result.SecureBootEnabled -eq 'Yes') { '[PASS]' } else { '[WARN]' })"
-            Write-Host "  CPU: $(if ($result.CPUCompatible) { '[PASS]' } else { '[FAIL]' }) $($result.CPUName)"
-            Write-Host "  RAM: $(if ($result.RAMSufficient -eq 'Yes') { '[PASS]' } else { '[FAIL]' }) $($result.TotalMemoryGB) GB"
-            Write-Host "  Storage: $(if ($result.StorageSufficient -eq 'Yes') { '[PASS]' } else { '[FAIL]' }) $($result.SystemDriveTotalGB) GB"
-            
-            if ($result.IsVirtualMachine) {
-                Write-Host ""
-                Write-Host "VM Type: $($result.VMType)" -ForegroundColor Cyan
-                if ($result.VMConfigurationNeeded -and $result.VMConfigurationNeeded -ne "No additional VM configuration needed") {
-                    Write-Host "VM Configuration Needed:" -ForegroundColor Yellow
-                    $configs = $result.VMConfigurationNeeded -split ';'
-                    foreach ($config in $configs) {
-                        Write-Host "  - $($config.Trim())" -ForegroundColor Yellow
-                    }
-                }
-            }
-            
-            # Check for virtual TPM in VMware
-            try {
-                $vmView = $vm | Get-View
-                $tpmDevice = $vmView.Config.Hardware.Device | Where-Object { $_.GetType().Name -eq 'VirtualTPM' }
-                $hasVMwareTPM = ($null -ne $tpmDevice)
-                
-                if (-not $hasVMwareTPM -and $result.TPMVersion -notmatch '2\.0') {
-                    Write-Host ""
-                    Write-Host "Note: VM does not have a virtual TPM device in VMware." -ForegroundColor Yellow
-                    Write-Host "      A vTPM will need to be added before upgrading to Windows 11." -ForegroundColor Yellow
-                }
-            }
-            catch {
-                # Ignore errors checking for vTPM
-            }
-            
-            if ($result.CompatibilityIssues -and $result.CompatibilityIssues -ne "None - Ready for Windows 11" -and $result.CompatibilityIssues -ne "None - VM is ready for Windows 11") {
-                Write-Host ""
-                Write-Host "Issues Found:" -ForegroundColor Yellow
-                $issues = $result.CompatibilityIssues -split ';'
-                foreach ($issue in $issues) {
-                    Write-Host "  - $($issue.Trim())" -ForegroundColor Yellow
-                }
-            }
-            
-            if ($result.UpgradeActionRequired -and $result.UpgradeActionRequired -ne "No action required - System is Windows 11 ready" -and $result.UpgradeActionRequired -ne "No action required - VM is Windows 11 ready") {
-                Write-Host ""
-                Write-Host "Required Actions:" -ForegroundColor Cyan
-                $actions = $result.UpgradeActionRequired -split ';'
-                foreach ($action in $actions) {
-                    Write-Host "  - $($action.Trim())" -ForegroundColor Cyan
-                }
-            }
-            
-            return $result
-        }
-        else {
-            Write-Error "Assessment failed for $VMName"
-            return @{
-                ComputerName = $VMName
-                Status = "Assessment Failed"
-                Win11Compatible = "Error"
-                CompatibilityIssues = "Failed to complete assessment"
-                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            }
-        }
-    }
-    catch {
-        Write-Error "Error assessing VM $VMName : $_"
+    if (-not (Test-VMwareToolsRunning -VM $VM)) {
         return @{
-            ComputerName = $VMName
-            Status = "Error"
-            Win11Compatible = "Error"
-            CompatibilityIssues = $_.Exception.Message
-            Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            Status = "Skipped"
+            Reason = "VMware Tools not running"
+            Result = "Unknown"
         }
     }
+    
+    $healthCheckScript = @'
+$ErrorActionPreference = "SilentlyContinue"
+
+# Download PC Health Check if not present
+$installerPath = "$env:TEMP\WindowsPCHealthCheckSetup.msi"
+$appPath = "${env:ProgramFiles}\PCHealthCheck\WindowsPCHealthCheckBeta.exe"
+
+# Check if already installed
+if (-not (Test-Path $appPath)) {
+    try {
+        Write-Output "Downloading PC Health Check..."
+        $downloadUrl = "https://aka.ms/GetPCHealthCheckApp"
+        
+        # Use WebClient for compatibility
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($downloadUrl, $installerPath)
+        
+        if (Test-Path $installerPath) {
+            Write-Output "Installing PC Health Check..."
+            Start-Process msiexec.exe -ArgumentList "/i `"$installerPath`" /quiet /norestart" -Wait -NoNewWindow
+            Start-Sleep -Seconds 5
+        }
+    } catch {
+        Write-Output "ERROR: Failed to download/install PC Health Check: $_"
+        return
+    }
+}
+
+# Run PC Health Check
+if (Test-Path $appPath) {
+    try {
+        # Run silently and check registry for results
+        Start-Process $appPath -ArgumentList "-s" -Wait -NoNewWindow
+        Start-Sleep -Seconds 3
+        
+        # Check registry for results
+        $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\WindowsUpdateEligibility"
+        if (Test-Path $regPath) {
+            $eligibility = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+            
+            if ($eligibility) {
+                $isEligible = $eligibility.IsEligible
+                $reasons = @()
+                
+                # Check specific requirements
+                if ($eligibility.TPMVersion -lt 2) { $reasons += "TPM 2.0 required" }
+                if ($eligibility.ProcessorGeneration -eq 0) { $reasons += "Unsupported processor" }
+                if ($eligibility.SecureBootCapable -eq 0) { $reasons += "Secure Boot not capable" }
+                if ($eligibility.RAMSize -lt 4) { $reasons += "Insufficient RAM" }
+                if ($eligibility.StorageSize -lt 64) { $reasons += "Insufficient storage" }
+                
+                if ($isEligible -eq 1) {
+                    Write-Output "PCHEALTHCHECK:PASS|DETAILS:All requirements met"
+                } else {
+                    $reasonText = if ($reasons.Count -gt 0) { $reasons -join ";" } else { "Requirements not met" }
+                    Write-Output "PCHEALTHCHECK:FAIL|DETAILS:$reasonText"
+                }
+            } else {
+                Write-Output "PCHEALTHCHECK:UNKNOWN|DETAILS:Could not read results"
+            }
+        } else {
+            # Try alternative check
+            Write-Output "PCHEALTHCHECK:UNKNOWN|DETAILS:Registry key not found"
+        }
+    } catch {
+        Write-Output "PCHEALTHCHECK:ERROR|DETAILS:$_"
+    }
+} else {
+    Write-Output "PCHEALTHCHECK:NOTINSTALLED|DETAILS:PC Health Check not installed"
+}
+'@
+    
+    try {
+        $result = Invoke-VMScript -VM $VM -ScriptText $healthCheckScript `
+            -ScriptType PowerShell -GuestCredential $GuestCredential `
+            -ErrorAction Stop -WarningAction SilentlyContinue
+        
+        if ($result.ScriptOutput -match "PCHEALTHCHECK:([^|]+)\|DETAILS:(.+)") {
+            return @{
+                Status = $matches[1].Trim()
+                Details = $matches[2].Trim()
+                Result = if ($matches[1].Trim() -eq "PASS") { "Ready" } else { "Not Ready" }
+            }
+        }
+        
+        return @{
+            Status = "Unknown"
+            Details = "Could not parse results"
+            Result = "Unknown"
+        }
+    }
+    catch {
+        return @{
+            Status = "Error"
+            Details = "Failed to run: $_"
+            Result = "Unknown"
+        }
+    }
+}
+
+# Main assessment function
+function Assess-Windows11Readiness {
+    param(
+        [string[]]$VMNames = @(),
+        [PSCredential]$GuestCredential
+    )
+    
+    Write-Host "`n=== Windows 11 Readiness Batch Assessment ===" -ForegroundColor Cyan
+    Write-Host "Assessment started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Gray
+    Write-Host ""
+    
+    # Discover Windows 10 VMs if none specified
+    if ($VMNames.Count -eq 0) {
+        Write-Host "Discovering Windows 10 VMs..." -ForegroundColor Yellow
+        
+        $allVMs = Get-VM | Where-Object { 
+            $_.Guest.OSFullName -match "Windows 10" -or 
+            $_.Guest.OSFullName -match "Microsoft Windows 10" -or
+            ($_.Guest.OSFullName -match "Windows" -and 
+             $_.Guest.OSFullName -notmatch "Server|Windows 11|Windows 7|Windows 8")
+        }
+        
+        if ($allVMs.Count -eq 0) {
+            Write-Host "No Windows 10 VMs found" -ForegroundColor Red
+            return @()
+        }
+        
+        Write-Host "Found $($allVMs.Count) Windows 10 VM(s)" -ForegroundColor Green
+        $VMNames = $allVMs.Name
+    }
+    
+    # Initialize results
+    $assessmentResults = @()
+    $currentVM = 1
+    $totalVMs = $VMNames.Count
+    
+    Write-Host "Assessing $totalVMs VM(s)..." -ForegroundColor Cyan
+    Write-Host ""
+    
+    # Assessment scripts
+    $diskCheckScript = @'
+try {
+    $cDrive = Get-WmiObject Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+    "FREE:$([math]::Round($cDrive.FreeSpace / 1GB, 2))|TOTAL:$([math]::Round($cDrive.Size / 1GB, 2))"
+} catch { "ERROR:DiskCheck" }
+'@
+
+    $recoveryCheckScript = @'
+try {
+    $recoveryPartitions = Get-Partition | Where-Object { $_.Type -eq "Recovery" } -ErrorAction Stop
+    $totalSizeMB = 0
+    $count = 0
+    if ($recoveryPartitions) {
+        foreach ($rp in $recoveryPartitions) {
+            $totalSizeMB += [math]::Round($rp.Size / 1MB, 0)
+            $count++
+        }
+    }
+    "RECOVERY_COUNT:$count|RECOVERY_MB:$totalSizeMB"
+} catch { "RECOVERY_COUNT:0|RECOVERY_MB:0" }
+'@
+
+    $licenseCheckScript = @'
+try {
+    $activation = Get-CimInstance -ClassName SoftwareLicensingProduct -ErrorAction Stop | 
+        Where-Object { $_.PartialProductKey -and $_.Name -like "Windows*" } | 
+        Select-Object -First 1
+    
+    if ($activation) {
+        $status = if ($activation.LicenseStatus -eq 1) { "Licensed" } else { "Unlicensed" }
+        $activated = if ($activation.LicenseStatus -eq 1) { "Activated" } else { "NotActivated" }
+        $licType = if ($activation.Description -match "Volume") { "Volume" } 
+                   elseif ($activation.Description -match "OEM") { "OEM" } 
+                   else { "Retail" }
+        "LICENSE:$status|ACTIVATION:$activated|TYPE:$licType"
+    } else { "LICENSE:Unknown|ACTIVATION:Unknown|TYPE:Unknown" }
+} catch { "LICENSE:CheckFailed|ACTIVATION:CheckFailed|TYPE:CheckFailed" }
+'@
+
+    $osInfoScript = @'
+try {
+    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+    "BUILD:$($os.BuildNumber)|OS:$($os.Caption)"
+} catch { "BUILD:Unknown|OS:Unknown" }
+'@
+
+    # Process each VM
+    foreach ($vmName in $VMNames) {
+        Write-Host "[$currentVM/$totalVMs] Assessing: $vmName" -ForegroundColor Cyan
+        
+        try {
+            $vm = Get-VM -Name $vmName -ErrorAction Stop
+            
+            # Initialize assessment
+            $assessment = @{
+                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                VMName = $vm.Name
+                PowerState = $vm.PowerState
+                GuestOS = $vm.Guest.OSFullName
+                VMwareToolsStatus = $vm.Guest.State
+                
+                # Hardware checks
+                CPU = $vm.NumCpu
+                CPUStatus = if ($vm.NumCpu -ge 2) { "Pass" } else { "Fail" }
+                MemoryGB = $vm.MemoryGB
+                MemoryStatus = if ($vm.MemoryGB -ge 4) { "Pass" } else { "Fail" }
+                
+                # Guest OS defaults
+                GuestOSBuild = "N/A"
+                FreeDiskSpaceGB = 0
+                DiskSpaceStatus = "Unknown"
+                RecoveryPartitionMB = 0
+                RecoveryPartitionStatus = "Unknown"
+                LicenseStatus = "Unknown"
+                ActivationStatus = "Unknown"
+                
+                # PC Health Check
+                PCHealthCheckStatus = "Not Run"
+                PCHealthCheckDetails = ""
+                PCHealthCheckResult = "Unknown"
+                
+                # Overall
+                OverallReadiness = "Not Assessed"
+                RequiredActions = @()
+            }
+            
+            # Check disk
+            $disk = Get-HardDisk -VM $vm | Select-Object -First 1
+            $assessment.DiskSizeGB = [math]::Round($disk.CapacityGB, 2)
+            $assessment.DiskStatus = if ($disk.CapacityGB -ge 64) { "Pass" } else { "Fail" }
+            
+            # Check vTPM
+            $tpmStatus = Check-vTPMStatus -VM $vm
+            $assessment.vTPM = if ($tpmStatus.HasTPM) { "Present" } else { "Missing" }
+            $assessment.vTPMStatus = if ($tpmStatus.HasTPM) { "Pass" } else { "Fail" }
+            $assessment.Firmware = $tpmStatus.Firmware
+            $assessment.FirmwareStatus = if ($tpmStatus.Firmware -eq 'efi') { "Pass" } else { "Fail" }
+            
+            # Guest OS checks if powered on
+            if ($vm.PowerState -eq 'PoweredOn' -and $GuestCredential -and (Test-VMwareToolsRunning -VM $vm)) {
+                Write-Host "  Running guest OS checks..." -ForegroundColor Yellow
+                
+                # OS Info
+                try {
+                    $osResult = Invoke-VMScript -VM $vm -ScriptText $osInfoScript `
+                        -ScriptType PowerShell -GuestCredential $GuestCredential `
+                        -ErrorAction Stop -WarningAction SilentlyContinue
+                    
+                    if ($osResult.ScriptOutput -match "BUILD:([^|]+)\|OS:(.+)") {
+                        $assessment.GuestOSBuild = $matches[1].Trim()
+                    }
+                } catch {}
+                
+                # Disk Space
+                try {
+                    $diskResult = Invoke-VMScript -VM $vm -ScriptText $diskCheckScript `
+                        -ScriptType PowerShell -GuestCredential $GuestCredential `
+                        -ErrorAction Stop -WarningAction SilentlyContinue
+                    
+                    if ($diskResult.ScriptOutput -match "FREE:([^|]+)\|TOTAL:(.+)") {
+                        $assessment.FreeDiskSpaceGB = [decimal]$matches[1].Trim()
+                        $assessment.DiskSpaceStatus = if ($assessment.FreeDiskSpaceGB -ge 30) { "Pass" } else { "Fail" }
+                    }
+                } catch {}
+                
+                # Recovery Partition
+                try {
+                    $recoveryResult = Invoke-VMScript -VM $vm -ScriptText $recoveryCheckScript `
+                        -ScriptType PowerShell -GuestCredential $GuestCredential `
+                        -ErrorAction Stop -WarningAction SilentlyContinue
+                    
+                    if ($recoveryResult.ScriptOutput -match "RECOVERY_COUNT:([^|]+)\|RECOVERY_MB:(.+)") {
+                        $assessment.RecoveryPartitionMB = [int]$matches[2].Trim()
+                        $assessment.RecoveryPartitionStatus = if ($assessment.RecoveryPartitionMB -ge 1100) { "Pass" } 
+                                                               elseif ($assessment.RecoveryPartitionMB -eq 0) { "Missing" } 
+                                                               else { "Fail" }
+                    }
+                } catch {}
+                
+                # License Status
+                try {
+                    $licenseResult = Invoke-VMScript -VM $vm -ScriptText $licenseCheckScript `
+                        -ScriptType PowerShell -GuestCredential $GuestCredential `
+                        -ErrorAction Stop -WarningAction SilentlyContinue
+                    
+                    if ($licenseResult.ScriptOutput -match "LICENSE:([^|]+)\|ACTIVATION:([^|]+)\|TYPE:(.+)") {
+                        $assessment.LicenseStatus = $matches[1].Trim()
+                        $assessment.ActivationStatus = $matches[2].Trim()
+                    }
+                } catch {}
+                
+                # PC Health Check
+                Write-Host "  Running PC Health Check..." -ForegroundColor Yellow
+                $pcHealthResult = Invoke-PCHealthCheck -VM $vm -GuestCredential $GuestCredential
+                $assessment.PCHealthCheckStatus = $pcHealthResult.Status
+                $assessment.PCHealthCheckDetails = $pcHealthResult.Details
+                $assessment.PCHealthCheckResult = $pcHealthResult.Result
+                
+                Write-Host "  Guest checks completed" -ForegroundColor Green
+            } elseif ($vm.PowerState -ne 'PoweredOn') {
+                $assessment.PCHealthCheckStatus = "VM Off"
+                $assessment.PCHealthCheckDetails = "VM must be powered on for health check"
+            }
+            
+            # Calculate overall readiness
+            $failCount = 0
+            
+            if ($assessment.CPUStatus -eq "Fail") { 
+                $failCount++
+                $assessment.RequiredActions += "Increase CPU to 2+ cores"
+            }
+            if ($assessment.MemoryStatus -eq "Fail") { 
+                $failCount++
+                $assessment.RequiredActions += "Increase memory to 4+ GB"
+            }
+            if ($assessment.DiskStatus -eq "Fail") { 
+                $failCount++
+                $assessment.RequiredActions += "Expand disk to 64+ GB"
+            }
+            if ($assessment.vTPMStatus -eq "Fail") { 
+                $failCount++
+                $assessment.RequiredActions += "Add vTPM 2.0"
+            }
+            if ($assessment.FirmwareStatus -eq "Fail") { 
+                $failCount++
+                $assessment.RequiredActions += "Convert to EFI firmware"
+            }
+            if ($assessment.DiskSpaceStatus -eq "Fail") {
+                $failCount++
+                $assessment.RequiredActions += "Free up disk space (need 30+ GB)"
+            }
+            if ($assessment.RecoveryPartitionStatus -eq "Fail") {
+                $assessment.RequiredActions += "Resize recovery partition to 1100+ MB"
+            }
+            
+            # Overall status
+            if ($assessment.PCHealthCheckStatus -eq "PASS" -and $failCount -eq 0) {
+                $assessment.OverallReadiness = "Ready"
+            } elseif ($assessment.PCHealthCheckStatus -eq "FAIL" -or $failCount -gt 2) {
+                $assessment.OverallReadiness = "Not Ready"
+            } elseif ($failCount -le 2) {
+                $assessment.OverallReadiness = "Minor Issues"
+            } else {
+                $assessment.OverallReadiness = "Major Issues"
+            }
+            
+            $assessmentResults += $assessment
+            
+            # Display status
+            $statusColor = switch ($assessment.OverallReadiness) {
+                "Ready" { 'Green' }
+                "Minor Issues" { 'Yellow' }
+                default { 'Red' }
+            }
+            Write-Host "  Status: $($assessment.OverallReadiness)" -ForegroundColor $statusColor
+            Write-Host "  PC Health Check: $($assessment.PCHealthCheckStatus)" -ForegroundColor Gray
+            
+        }
+        catch {
+            Write-Host "  Error: $_" -ForegroundColor Red
+            $assessmentResults += @{
+                Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                VMName = $vmName
+                OverallReadiness = "Error"
+                PCHealthCheckStatus = "Error"
+                RequiredActions = @("Assessment failed: $_")
+            }
+        }
+        
+        $currentVM++
+    }
+    
+    return $assessmentResults
+}
+
+# Export results to CSV
+function Export-AssessmentResults {
+    param(
+        [array]$Results,
+        [string]$OutputPath
+    )
+    
+    if ($Results.Count -eq 0) {
+        Write-Host "No results to export" -ForegroundColor Yellow
+        return
+    }
+    
+    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $fileName = "Win11Assessment_$timestamp.csv"
+    $fullPath = Join-Path $OutputPath $fileName
+    
+    # Convert to CSV format
+    $csvData = @()
+    foreach ($result in $Results) {
+        $csvData += [PSCustomObject]@{
+            Timestamp = $result.Timestamp
+            VMName = $result.VMName
+            PowerState = $result.PowerState
+            GuestOS = $result.GuestOS
+            OverallReadiness = $result.OverallReadiness
+            PCHealthCheckStatus = $result.PCHealthCheckStatus
+            PCHealthCheckDetails = $result.PCHealthCheckDetails
+            PCHealthCheckResult = $result.PCHealthCheckResult
+            CPU = $result.CPU
+            CPUStatus = $result.CPUStatus
+            MemoryGB = $result.MemoryGB
+            MemoryStatus = $result.MemoryStatus
+            DiskSizeGB = $result.DiskSizeGB
+            DiskStatus = $result.DiskStatus
+            FreeDiskSpaceGB = $result.FreeDiskSpaceGB
+            DiskSpaceStatus = $result.DiskSpaceStatus
+            vTPM = $result.vTPM
+            vTPMStatus = $result.vTPMStatus
+            Firmware = $result.Firmware
+            FirmwareStatus = $result.FirmwareStatus
+            RecoveryPartitionMB = $result.RecoveryPartitionMB
+            RecoveryPartitionStatus = $result.RecoveryPartitionStatus
+            LicenseStatus = $result.LicenseStatus
+            ActivationStatus = $result.ActivationStatus
+            GuestOSBuild = $result.GuestOSBuild
+            VMwareToolsStatus = $result.VMwareToolsStatus
+            RequiredActions = ($result.RequiredActions -join "; ")
+        }
+    }
+    
+    $csvData | Export-Csv -Path $fullPath -NoTypeInformation
+    
+    return $fullPath
 }
 
 # Main execution
 try {
-    Show-Banner
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "  Windows 11 Readiness Batch Assessment " -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
     
-    # Validate parameters
-    if (-not $MachineName -and -not $CSV) {
-        throw "You must specify either -MachineName or -CSV parameter"
-    }
-    
-    if ($MachineName -and $CSV) {
-        throw "Please specify either -MachineName or -CSV, not both"
-    }
-    
-    # Get list of machines to assess
-    $machinesToAssess = @()
-    if ($MachineName) {
-        $machinesToAssess += $MachineName
-    }
-    else {
-        if (-not (Test-Path $CSV)) {
-            throw "CSV file not found: $CSV"
-        }
-        
-        $csvData = Import-Csv -Path $CSV
-        if ($csvData[0].PSObject.Properties.Name -contains 'MachineName') {
-            $machinesToAssess = $csvData.MachineName
-        }
-        elseif ($csvData[0].PSObject.Properties.Name -contains 'ComputerName') {
-            $machinesToAssess = $csvData.ComputerName
-        }
-        else {
-            throw "CSV must contain either 'MachineName' or 'ComputerName' column"
-        }
-    }
-    
-    Write-Host "Machines to assess: $($machinesToAssess.Count)" -ForegroundColor Cyan
+    # Initialize VMware modules
+    Write-Host "Initializing VMware PowerCLI..." -ForegroundColor Yellow
+    Initialize-VMwareModules
     
     # Connect to vCenter
-    $maxAttempts = 3
-    $connected = $false
+    Write-Host "Connecting to vCenter: $vCenterServer" -ForegroundColor Yellow
+    $vCenterCred = Get-Credential -UserName $vCenterUser -Message "Enter vCenter password"
     
-    for ($i = 1; $i -le $maxAttempts; $i++) {
-        Write-Host ""
-        $vCenterCred = Get-Credential -UserName $vCenterAdminUser -Message "Enter vCenter password (Attempt $i of $maxAttempts)"
-        
-        if (Connect-vCenter -Server $vCenterServer -Credential $vCenterCred) {
-            $connected = $true
-            break
+    if (-not $vCenterCred) {
+        throw "No vCenter credentials provided"
+    }
+    
+    Connect-VIServer -Server $vCenterServer -Credential $vCenterCred -ErrorAction Stop | Out-Null
+    Write-Host "Connected successfully" -ForegroundColor Green
+    
+    # Get guest credentials
+    Write-Host ""
+    Write-Host "Guest OS credentials are required for detailed assessment and PC Health Check" -ForegroundColor Yellow
+    $guestCred = Get-Credential -UserName $GuestUser -Message "Enter guest OS admin credentials (Domain or Local Admin)"
+    
+    if (-not $guestCred) {
+        Write-Host "Warning: No guest credentials provided. Assessment will be limited." -ForegroundColor Yellow
+        $continue = Read-Host "Continue anyway? (Y/N)"
+        if ($continue -ne 'Y' -and $continue -ne 'y') {
+            throw "Assessment cancelled"
         }
-        
-        if ($i -lt $maxAttempts) {
-            Write-Warning "Connection failed. Please try again."
-            Start-Sleep -Seconds 2
-        }
     }
     
-    if (-not $connected) {
-        throw "Failed to connect to vCenter after $maxAttempts attempts"
-    }
+    # Run assessment
+    $results = Assess-Windows11Readiness -VMNames $VMList -GuestCredential $guestCred
     
-    # Get Windows credentials
+    # Summary
     Write-Host ""
-    $windowsCred = Get-Credential -UserName $WindowsDomainUser -Message "Enter Windows domain password for VM assessment"
+    Write-Host "=== Assessment Summary ===" -ForegroundColor Cyan
     
-    # Assess each machine
-    $results = @()
-    $counter = 0
-    $totalMachines = $machinesToAssess.Count
+    $readyCount = ($results | Where-Object { $_.OverallReadiness -eq "Ready" }).Count
+    $minorCount = ($results | Where-Object { $_.OverallReadiness -eq "Minor Issues" }).Count
+    $notReadyCount = ($results | Where-Object { $_.OverallReadiness -match "Not Ready|Major Issues" }).Count
+    $errorCount = ($results | Where-Object { $_.OverallReadiness -eq "Error" }).Count
     
-    foreach ($machine in $machinesToAssess) {
-        $counter++
-        
-        if ($totalMachines -gt 1) {
-            Write-Progress -Activity "Assessing Windows 11 Compatibility" `
-                          -Status "Processing $machine ($counter of $totalMachines)" `
-                          -PercentComplete (($counter / $totalMachines) * 100)
-        }
-        
-        $result = Assess-VM -VMName $machine -WindowsCredential $windowsCred
-        $results += $result
+    Write-Host "Total VMs assessed: $($results.Count)" -ForegroundColor White
+    Write-Host "Ready for Windows 11: $readyCount" -ForegroundColor Green
+    Write-Host "Minor issues: $minorCount" -ForegroundColor Yellow
+    Write-Host "Not ready: $notReadyCount" -ForegroundColor Red
+    if ($errorCount -gt 0) {
+        Write-Host "Assessment errors: $errorCount" -ForegroundColor Red
     }
     
-    if ($totalMachines -gt 1) {
-        Write-Progress -Activity "Assessing Windows 11 Compatibility" -Completed
-    }
-    
-    # Export results to CSV
-    Write-Host ""
-    Write-Host "Exporting results to CSV: $OutputCSV" -ForegroundColor Yellow
-    $results | Export-Csv -Path $OutputCSV -NoTypeInformation -Force
-    Write-Host "CSV export complete." -ForegroundColor Green
-    
-    # Generate HTML report
-    if (-not $SkipHTMLReport) {
-        Write-Host "Generating HTML report: $OutputHTML" -ForegroundColor Yellow
-        Export-CompatibilityReportHTML -Results $results -ReportPath $OutputHTML
-    }
-    
-    # Display summary
-    Write-Host ""
-    Write-Host "=" * 60
-    Write-Host "ASSESSMENT SUMMARY" -ForegroundColor Cyan
-    Write-Host "=" * 60
-    
-    $compatible = @($results | Where-Object { $_.Win11Compatible -eq "Yes" }).Count
-    $incompatible = @($results | Where-Object { $_.Win11Compatible -in @("No", "No - License/Other Issues") }).Count
-    $needsConfig = @($results | Where-Object { $_.Win11Compatible -eq "VM - Needs Configuration" }).Count
-    $errors = @($results | Where-Object { $_.Win11Compatible -in @("Error", "Cannot Assess") }).Count
-    $notWin10 = @($results | Where-Object { $_.Win11Compatible -eq "N/A - Not Windows 10" }).Count
-    
-    Write-Host "Total VMs Processed: $($results.Count)"
-    Write-Host ""
-    Write-Host "Ready for Windows 11: $compatible" -ForegroundColor Green
-    Write-Host "Not Compatible: $incompatible" -ForegroundColor Red
-    Write-Host "VMs Need Configuration: $needsConfig" -ForegroundColor Yellow
-    Write-Host "Assessment Errors: $errors" -ForegroundColor Gray
-    Write-Host "Not Windows 10: $notWin10" -ForegroundColor Gray
-    
-    if ($compatible -gt 0 -and $results.Count -gt 0) {
-        $percentage = [math]::Round(($compatible / $results.Count) * 100, 1)
-        Write-Host ""
-        Write-Host "Compatibility Rate: $percentage%" -ForegroundColor Cyan
-    }
-    
-    # Show in GridView if requested
-    if ($ShowGridView) {
-        Write-Host ""
-        Write-Host "Opening results in GridView..." -ForegroundColor Yellow
-        $results | Out-GridView -Title "Windows 11 VMware Compatibility Assessment Results"
-    }
+    # PC Health Check results
+    $pcHealthPass = ($results | Where-Object { $_.PCHealthCheckStatus -eq "PASS" }).Count
+    $pcHealthFail = ($results | Where-Object { $_.PCHealthCheckStatus -eq "FAIL" }).Count
     
     Write-Host ""
-    Write-Host "Assessment complete!" -ForegroundColor Green
-    Write-Host "Results saved to:"
-    Write-Host "  CSV: $OutputCSV" -ForegroundColor Cyan
-    if (-not $SkipHTMLReport) {
-        Write-Host "  HTML: $OutputHTML" -ForegroundColor Cyan
-    }
+    Write-Host "PC Health Check Results:" -ForegroundColor Cyan
+    Write-Host "Passed: $pcHealthPass" -ForegroundColor Green
+    Write-Host "Failed: $pcHealthFail" -ForegroundColor Red
+    
+    # Export results
+    Write-Host ""
+    $csvFile = Export-AssessmentResults -Results $results -OutputPath $OutputPath
+    Write-Host "Results exported to: $csvFile" -ForegroundColor Green
+    
 }
 catch {
-    Write-Error "Script execution failed: $_"
     Write-Host ""
-    Write-Host "Stack trace:" -ForegroundColor Red
-    Write-Host $_.ScriptStackTrace
+    Write-Host "ERROR: $_" -ForegroundColor Red
+    exit 1
 }
 finally {
     # Disconnect from vCenter
-    if ($vCenterServer) {
-        try {
-            if (Get-VIServer -Server $vCenterServer -ErrorAction SilentlyContinue) {
-                Disconnect-VIServer -Server $vCenterServer -Force -Confirm:$false
-                Write-Host ""
-                Write-Host "Disconnected from vCenter." -ForegroundColor Green
-            }
-        }
-        catch {
-            Write-Warning "Error disconnecting from vCenter: $_"
-        }
+    if ($global:DefaultVIServers) {
+        Write-Host ""
+        Write-Host "Disconnecting from vCenter..." -ForegroundColor Yellow
+        Disconnect-VIServer -Server * -Force -Confirm:$false -ErrorAction SilentlyContinue
     }
 }
+
+Write-Host ""
+Write-Host "Assessment complete!" -ForegroundColor Green
